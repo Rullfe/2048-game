@@ -1,9 +1,0 @@
-name = "arg"
-main = "worker/worker.js"
-compatibility_date = "2026-08-21"
-
-assets = { directory = "public" }
-
-[[kv_namespaces]]
-binding = "arg_use_emm"
-id = "b27714ad631e4c9cb1f85f7dec9fef72"
