@@ -1,0 +1,7 @@
+name = "2048-worker"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+[[kv_namespaces]]
+binding = "RANK_KV"
+id = "a1179332f2f946ad8a18811dd44718d8"
