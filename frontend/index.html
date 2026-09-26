@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048游戏 JWT账号版</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;font-family:Arial}
+        body{background-color:#faf8ef;display:flex;flex-direction:column;align-items:center;padding-top:15px}
+        .container{width:420px}
+        .login-box{background:#bbada0;padding:15px;border-radius:8px;color:white;margin-bottom:10px}
+        .login-box input{padding:6px;width:130px;margin:4px;border-radius:4px;border:none}
+        .login-box button{background:#8f7a66;color:white;border:none;padding:6px 9px;border-radius:4px;cursor:pointer;margin:2px;font-size:13px}
+        .login-box button:hover{background:#9c8b78}
+        .user-info{margin-bottom:8px;font-size:15px}
+        .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+        h1{font-size:55px;color:#776e64}
+        .score-box{background:#bbada0;padding:8px 18px;border-radius:6px;color:white;text-align:center}
+        #score-title{font-size:13px}
+        #score-val{font-size:24px;font-weight:bold}
+        .btn-group{margin:8px 0;display:flex;gap:8px}
+        button{background:#8f7a66;color:white;border:none;padding:9px 14px;border-radius:6px;font-size:15px;cursor:pointer}
+        button:hover{background:#9c8b78}
+        #board{background:#bbada0;padding:12px;border-radius:10px;position:relative}
+        .grid-cell{width:92px;height:92px;background:rgba(238,228,218,0.3);border-radius:6px;position:absolute}
+        .tile{position:absolute;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:32px;transition:0.15s ease}
+        .tile-2{background:#eee4da;color:#776e64}
+        .tile-4{background:#ede0c8;color:#776e64}
+        .tile-8{background:#f2b179;color:white}
+        .tile-16{background:#f59563;color:white}
+        .tile-32{background:#f67c5f;color:white}
+        .tile-64{background:#f65e3b;color:white}
+        .tile-128{background:#edcf72;color:white;font-size:28px}
+        .tile-256{background:#edcc61;color:white;font-size:28px}
+        .tile-512{background:#edc850;color:white;font-size:28px}
+        .tile-1024{background:#edc53f;color:white;font-size:22px}
+        .tile-2048{background:#edc22e;color:white;font-size:22px}
+        .game-over{position:absolute;width:100%;height:100%;background:rgba(238,228,218,0.7);left:0;top:0;display:none;flex-direction:column;align-items:center;justify-content:center;border-radius:10px}
+        .game-over h2{font-size:40px;color:#776e64;margin-bottom:15px}
+        #rank-panel{margin-top:16px;width:420px;background:#bbada0;border-radius:8px;padding:14px;color:white}
+        #rank-panel h3{margin-bottom:6px;font-size:16px}
+        #rank-list{font-size:14px;line-height:1.6}
+        #personal-record{margin-top:10px;padding-top:8px;border-top:1px solid #ffffff40;font-size:13px}
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="login-box">
+        <div class="user-info" id="userInfo">❌未登录</div>
+        <input id="username" placeholder="用户名">
+        <input id="password" type="password" placeholder="密码">
+        <br>
+        <button id="registerBtn">注册账号</button>
+        <button id="loginBtn">登录账号</button>
+        <button id="logoutBtn">退出登录</button>
+        <button id="getRecordBtn">我的对局记录</button>
+    </div>
+
+    <div class="header">
+        <h1>2048</h1>
+        <div class="score-box">
+            <div id="score-title">本局分数</div>
+            <div id="score-val">0</div>
+        </div>
+    </div>
+    <div class="btn-group">
+        <button id="restartBtn">重新开始</button>
+        <button id="submitScoreBtn">提交本局分数</button>
+    </div>
+    <div id="board">
+        <div class="game-over" id="gameOverMask">
+            <h2>游戏结束</h2>
+            <button id="maskRestart">再来一局</button>
+        </div>
+    </div>
+    <div id="rank-panel">
+        <h3>🏆全局排行榜Top20</h3>
+        <div id="rank-list">加载中...</div>
+        <div id="personal-record"></div>
+    </div>
+</div>
+
+<script>
+// ========= 改成你自己Worker域名 =========
+const WORKER_URL = "https://2048-worker.xxx.workers.dev";
+
+const boardDom = document.getElementById('board');
+const scoreDom = document.getElementById('score-val');
+const gameOverMask = document.getElementById('gameOverMask');
+const userInfoDom = document.getElementById("userInfo");
+const rankListDom = document.getElementById("rank-list");
+const personalDom = document.getElementById("personal-record");
+
+let grid = [];
+let score = 0;
+const size = 4;
+// JWT令牌存储
+let jwtToken = localStorage.getItem("2048_jwt") || null;
+
+//页面初始化恢复登录状态
+async function restoreLogin(){
+    if(!jwtToken){
+        userInfoDom.innerText="❌未登录，请注册登录";
+        return;
+    }
+    try{
+        const res = await fetch(`${WORKER_URL}/api/verify`,{
+            headers:{"Authorization":`Bearer ${jwtToken}`}
+        });
+        const data = await res.json();
+        if(data.success){
+            userInfoDom.innerText=`✅已登录账号：${data.username}`;
+        }else{
+            logoutLocal();
+        }
+    }catch(e){
+        logoutLocal();
+    }
+}
+function logoutLocal(){
+    localStorage.removeItem("2048_jwt");
+    jwtToken=null;
+    userInfoDom.innerText="❌未登录，请注册登录";
+    personalDom.innerHTML="";
+}
+
+//棋盘初始化
+function initBoardBg(){
+    boardDom.innerHTML = `<div class="game-over" id="gameOverMask"><h2>游戏结束</h2><button id="maskRestart">再来一局</button></div>`;
+    for(let i=0;i<size;i++){
+        for(let j=0;j<size;j++){
+            const div = document.createElement('div');
+            div.className = "grid-cell";
+            div.style.left = (j*104+12)+"px";
+            div.style.top = (i*104+12)+"px";
+            boardDom.appendChild(div);
+        }
+    }
+}
+
+function newGame(){
+    score = 0;
+    scoreDom.innerText = score;
+    gameOverMask.style.display = "none";
+    grid = Array(size).fill().map(()=>Array(size).fill(0));
+    addRandomTile();
+    addRandomTile();
+    render();
+    loadRank();
+}
+
+function addRandomTile(){
+    let empty = [];
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++)if(grid[i][j]===0)empty.push({i,j});
+    if(empty.length===0)return;
+    let pos = empty[Math.floor(Math.random()*empty.length)];
+    grid[pos.i][pos.j] = Math.random()<0.9 ? 2 :4;
+}
+
+function render(){
+    document.querySelectorAll('.tile').forEach(d=>d.remove());
+    for(let i=0;i<4;i++){
+        for(let j=0;j<4;j++){
+            let val = grid[i][j];
+            if(val>0){
+                let tile = document.createElement('div');
+                tile.className = `tile tile-${val}`;
+                tile.innerText = val;
+                tile.style.left = (j*104+12)+"px";
+                tile.style.top = (i*104+12)+"px";
+                boardDom.appendChild(tile);
+            }
+        }
+    }
+}
+
+function slideLeft(row){
+    let arr = row.filter(x=>x!==0);
+    for(let i=0;i<arr.length-1;i++){
+        if(arr[i]===arr[i+1]){
+            arr[i] *=2;
+            score += arr[i];
+            arr[i+1]=0;
+        }
+    }
+    arr = arr.filter(x=>x!==0);
+    while(arr.length<4) arr.push(0);
+    return arr;
+}
+function rotate(g){
+    let res = [[],[],[],[]];
+    for(let i=0;i<4;i++) for(let j=0;j<4;j++) res[i][j]=g[3-j][i];
+    return res;
+}
+
+function move(direction){
+    let old = JSON.parse(JSON.stringify(grid));
+    for(let r=0;r<4;r++) grid[r]=slideLeft(grid[r]);
+    if(direction==='up') grid=rotate(rotate(rotate(grid)));
+    if(direction==='down') grid=rotate(grid);
+    if(direction==='right') grid=rotate(rotate(grid));
+
+    if(JSON.stringify(old)!==JSON.stringify(grid)){
+        addRandomTile();
+        scoreDom.innerText=score;
+        render();
+        checkGameOver();
+    }
+}
+
+function checkGameOver(){
+    for(let i=0;i<4;i++)for(let j=0;j<4;j++)if(grid[i][j]===0) return;
+    for(let i=0;i<4;i++){
+        for(let j=0;j<4;j++){
+            if(j+1<4 && grid[i][j]===grid[i][j+1]) return;
+            if(i+1<4 && grid[i][j]===grid[i+1][j]) return;
+        }
+    }
+    gameOverMask.style.display="flex";
+}
+
+//键盘
+document.addEventListener('keydown',e=>{
+    switch(e.key){
+        case 'ArrowLeft':move('left');break;
+        case 'ArrowRight':move('right');break;
+        case 'ArrowUp':move('up');break;
+        case 'ArrowDown':move('down');break;
+    }
+})
+//触屏滑动
+let touchX,touchY;
+boardDom.addEventListener('touchstart',e=>{touchX=e.touches[0].clientX;touchY=e.touches[0].clientY})
+boardDom.addEventListener('touchend',e=>{
+    let dx = e.changedTouches[0].clientX - touchX;
+    let dy = e.changedTouches[0].clientY - touchY;
+    if(Math.abs(dx)>Math.abs(dy)){
+        if(dx>30) move('right');
+        else if(dx<-30) move('left');
+    }else{
+        if(dy>30) move('down');
+        else if(dy<-30) move('up');
+    }
+})
+
+document.getElementById('restartBtn').onclick = newGame;
+document.getElementById('maskRestart').onclick = newGame;
+
+//注册
+document.getElementById("registerBtn").onclick = async ()=>{
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    if(!username||!password){alert("用户名密码不能为空");return;}
+    const res = await fetch(`${WORKER_URL}/api/register`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username,password})
+    })
+    const data = await res.json();
+    alert(data.msg);
+}
+
+//登录获取JWT
+document.getElementById("loginBtn").onclick = async ()=>{
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    if(!username||!password){alert("用户名密码不能为空");return;}
+    const res = await fetch(`${WORKER_URL}/api/login`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username,password})
+    })
+    const data = await res.json();
+    if(data.success){
+        jwtToken = data.token;
+        localStorage.setItem("2048_jwt",jwtToken);
+        userInfoDom.innerText=`✅已登录账号：${data.username}`;
+    }
+    alert(data.msg);
+}
+
+//登出
+document.getElementById("logoutBtn").onclick = ()=>{
+    logoutLocal();
+    alert("已退出登录");
+}
+
+//提交分数（带Authorization JWT）
+document.getElementById('submitScoreBtn').onclick = async ()=>{
+    if(!jwtToken){alert("请先登录账号");return;}
+    try{
+        const resp = await fetch(`${WORKER_URL}/api/submit`,{
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+                "Authorization":`Bearer ${jwtToken}`
+            },
+            body:JSON.stringify({score:score})
+        })
+        const data = await resp.json();
+        alert(data.msg);
+        loadRank();
+    }catch(err){
+        alert("提交失败！网络或Worker错误");
+        console.error(err);
+    }
+}
+
+//获取个人对局记录
+document.getElementById("getRecordBtn").onclick = async ()=>{
+    if(!jwtToken){alert("请先登录账号");return;}
+    try{
+        const res = await fetch(`${WORKER_URL}/api/myrecord`,{
+            headers:{"Authorization":`Bearer ${jwtToken}`}
+        })
+        const data = await res.json();
+        if(!data.success){alert(data.msg);return;}
+        let html = `<b>我的最高分：${data.bestScore}</b><br/>历史对局：<br/>`;
+        if(data.records.length===0) html+="暂无对局记录";
+        data.records.forEach((r,i)=>{
+            html += `${i+1}. ${r.score}分 | ${r.time}<br/>`;
+        })
+        personalDom.innerHTML = html;
+    }catch(e){
+        alert("读取记录失败");
+    }
+}
+
+//加载全局排行榜
+async function loadRank(){
+    try{
+        const res = await fetch(`${WORKER_URL}/api/rank`);
+        const list = await res.json();
+        let html = "";
+        list.forEach((item,idx)=>{
+            html += `${idx+1}. ${item.username} — ${item.score}分<br/>`
+        })
+        rankListDom.innerHTML = html || "暂无数据";
+    }catch(e){
+        rankListDom.innerText="排行榜加载失败";
+    }
+}
+
+initBoardBg();
+newGame();
+restoreLogin();
+</script>
+</body>
+</html>
