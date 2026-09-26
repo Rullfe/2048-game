@@ -5,3 +5,6 @@ compatibility_date = "2026-09-01"
 [[kv_namespaces]]
 binding = "RANK_KV"
 id = "a1179332f2f946ad8a18811dd44718d8"
+
+[vars]
+JWT_SECRET = "2048Game_Secret_Key_2026_abc987654321"
